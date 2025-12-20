@@ -13,8 +13,8 @@
 #   }
 #
 # Requirements:
-#   - Bitwarden CLI installed or embedded_client = true
-#   - BW_SESSION environment variable set (from `bw unlock --raw`)
+#   - Bitwarden CLI installed and BW_SESSION set (default mode)
+#   - OR: embedded_client = true with master_password (no CLI needed)
 #
 
 # =============================================================================

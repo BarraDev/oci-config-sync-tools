@@ -24,9 +24,9 @@ variable "bitwarden_server" {
 }
 
 variable "bitwarden_embedded_client" {
-  description = "Use embedded client instead of CLI (experimental, no CLI installation needed)"
+  description = "Use embedded client instead of CLI. Set to false when using BW_SESSION (default). Set to true only with master_password authentication."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "bitwarden_master_password" {
