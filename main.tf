@@ -2,52 +2,56 @@
 # TERRAFORM OCI TFVARS LOADER
 # =============================================================================
 #
-# This module loads configuration from password managers (Bitwarden/1Password)
+# This module loads configuration from Bitwarden password manager
 # and exposes them as outputs for use in Terraform configurations.
 #
 # Usage:
 #   module "config" {
-#     source        = "BarraDev/tfvars-loader/oci"
+#     source        = "app.terraform.io/barradevdigitalservices/tfvars-loader/oci"
 #     provider_type = "bitwarden"
 #     item_name     = "OCI Terraform - example.com"
 #   }
 #
+# Requirements:
+#   - Bitwarden CLI installed or embedded_client = true
+#   - BW_SESSION environment variable set (from `bw unlock --raw`)
+#
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # BITWARDEN PROVIDER
-# -----------------------------------------------------------------------------
+# =============================================================================
 
-module "bitwarden" {
-  source = "./modules/bitwarden"
-  count  = var.provider_type == "bitwarden" ? 1 : 0
+provider "bitwarden" {
+  # Authentication - uses environment variables by default:
+  # - BW_SESSION (session key from `bw unlock --raw`)
+  # - BW_PASSWORD (master password, if not using session)
+  # - BW_EMAIL (email for the account)
+  email           = var.bitwarden_email != "" ? var.bitwarden_email : null
+  server          = var.bitwarden_server != "" ? var.bitwarden_server : null
+  master_password = var.bitwarden_master_password != "" ? var.bitwarden_master_password : null
+  session_key     = var.bitwarden_session_key != "" ? var.bitwarden_session_key : null
 
-  item_name       = var.item_name
-  email           = var.bitwarden_email
-  server          = var.bitwarden_server
-  embedded_client = var.bitwarden_embedded_client
-  field_names     = var.field_names
+  experimental {
+    embedded_client = var.bitwarden_embedded_client
+  }
 }
 
-# -----------------------------------------------------------------------------
-# 1PASSWORD PROVIDER
-# -----------------------------------------------------------------------------
+# =============================================================================
+# LOAD ITEM FROM BITWARDEN
+# =============================================================================
 
-module "onepassword" {
-  source = "./modules/onepassword"
-  count  = var.provider_type == "onepassword" ? 1 : 0
-
-  item_name             = var.item_name
-  vault_name            = var.vault_name
-  service_account_token = var.onepassword_service_account_token
-  account               = var.onepassword_account
-  field_names           = var.field_names
+data "bitwarden_item_secure_note" "config" {
+  search = var.item_name
 }
 
-# -----------------------------------------------------------------------------
-# UNIFIED OUTPUTS
-# -----------------------------------------------------------------------------
+# =============================================================================
+# PARSE FIELDS
+# =============================================================================
 
 locals {
-  # Select the appropriate provider outputs
-  config = var.provider_type == "bitwarden" ? module.bitwarden[0] : module.onepassword[0]
+  # Convert fields array to map for easy access
+  fields = { for f in data.bitwarden_item_secure_note.config.field : f.name => f.text }
+
+  # Helper to safely get field value using configurable field names
+  get_field = { for k, v in var.field_names : k => lookup(local.fields, v, "") }
 }

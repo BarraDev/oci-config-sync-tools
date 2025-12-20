@@ -1,31 +1,10 @@
 # =============================================================================
-# PROVIDER SELECTION
-# =============================================================================
-
-variable "provider_type" {
-  description = "Password manager provider to use: 'bitwarden' or 'onepassword'"
-  type        = string
-  default     = "bitwarden"
-
-  validation {
-    condition     = contains(["bitwarden", "onepassword"], var.provider_type)
-    error_message = "provider_type must be 'bitwarden' or 'onepassword'"
-  }
-}
-
-# =============================================================================
 # ITEM CONFIGURATION
 # =============================================================================
 
 variable "item_name" {
-  description = "Name of the item in the password manager (e.g., 'OCI Terraform - example.com')"
+  description = "Name of the item in Bitwarden (e.g., 'OCI Terraform - example.com')"
   type        = string
-}
-
-variable "vault_name" {
-  description = "Vault/folder name (required for 1Password, optional for Bitwarden)"
-  type        = string
-  default     = ""
 }
 
 # =============================================================================
@@ -50,21 +29,18 @@ variable "bitwarden_embedded_client" {
   default     = true
 }
 
-# =============================================================================
-# 1PASSWORD CONFIGURATION
-# =============================================================================
-
-variable "onepassword_service_account_token" {
-  description = "1Password service account token (can also use OP_SERVICE_ACCOUNT_TOKEN env var)"
+variable "bitwarden_master_password" {
+  description = "Bitwarden master password (can also use BW_PASSWORD env var). Required if not using session_key."
   type        = string
   default     = ""
   sensitive   = true
 }
 
-variable "onepassword_account" {
-  description = "1Password account URL or ID"
+variable "bitwarden_session_key" {
+  description = "Bitwarden session key from `bw unlock --raw` (can also use BW_SESSION env var)"
   type        = string
   default     = ""
+  sensitive   = true
 }
 
 # =============================================================================
@@ -72,7 +48,7 @@ variable "onepassword_account" {
 # =============================================================================
 
 variable "field_names" {
-  description = "Map of output names to field names in the password manager item"
+  description = "Map of output names to field names in the Bitwarden item"
   type        = map(string)
   default = {
     compartment_id                    = "oci_compartment_id"
