@@ -12,9 +12,13 @@
 #     item_name     = "OCI Terraform - example.com"
 #   }
 #
-# Requirements:
-#   - Bitwarden CLI installed and BW_SESSION set (default mode)
-#   - OR: embedded_client = true with master_password (no CLI needed)
+# Requirements (embedded_client = true, default):
+#   - BW_EMAIL: Your Bitwarden email
+#   - BW_PASSWORD: Your master password
+#
+# Alternative (embedded_client = false):
+#   - Bitwarden CLI installed
+#   - BW_SESSION from `bw unlock --raw`
 #
 
 # =============================================================================
