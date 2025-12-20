@@ -26,14 +26,21 @@
 # =============================================================================
 
 provider "bitwarden" {
-  # Authentication - uses environment variables by default:
-  # - BW_SESSION (session key from `bw unlock --raw`)
-  # - BW_PASSWORD (master password, if not using session)
-  # - BW_EMAIL (email for the account)
-  email           = var.bitwarden_email != "" ? var.bitwarden_email : null
-  server          = var.bitwarden_server != "" ? var.bitwarden_server : null
-  master_password = var.bitwarden_master_password != "" ? var.bitwarden_master_password : null
-  session_key     = var.bitwarden_session_key != "" ? var.bitwarden_session_key : null
+  # Authentication depends on embedded_client mode:
+  # - embedded_client = true (default): uses BW_EMAIL + BW_PASSWORD
+  # - embedded_client = false: uses BW_SESSION (external CLI)
+  email  = var.bitwarden_email != "" ? var.bitwarden_email : null
+  server = var.bitwarden_server != "" ? var.bitwarden_server : null
+
+  # Only use master_password with embedded client
+  master_password = var.bitwarden_embedded_client ? (
+    var.bitwarden_master_password != "" ? var.bitwarden_master_password : null
+  ) : null
+
+  # Only use session_key with external CLI (not embedded)
+  session_key = !var.bitwarden_embedded_client ? (
+    var.bitwarden_session_key != "" ? var.bitwarden_session_key : null
+  ) : null
 
   experimental {
     embedded_client = var.bitwarden_embedded_client
