@@ -84,29 +84,15 @@ variable "region" {
 
 Only variables without defaults are fetched from the vault, keeping your tfvars minimal.
 
-### Field Name Mapping
-
-Terraform variable names are mapped to Bitwarden field names via `config/field-names.json`:
-
-```json
-{
-  "compartment_id": "oci_compartment_id",
-  "github_token": "gh_token",
-  "vault_id": "oci_vault_id"
-}
-```
-
-This allows vault fields to use different naming conventions than Terraform variables.
-
 ### Vault Item Structure
 
-Configuration is stored in a Secure Note named `OCI Terraform - {domain}`:
+Configuration is stored in a Secure Note named `OCI Terraform - {domain}`. Field names must match Terraform variable names exactly:
 
 ```
 OCI Terraform - example.com
-├── oci_compartment_id: ocid1.compartment...
-├── oci_region: us-phoenix-1
-├── gh_token: ghp_xxxxx (hidden)
+├── compartment_id: ocid1.compartment...
+├── region: us-phoenix-1
+├── github_token: ghp_xxxxx (hidden)
 ├── github_app_pem: -----BEGIN RSA... (hidden)
 └── ...
 ```
@@ -156,8 +142,6 @@ terraform-oci-tfvars-loader/
 │       ├── _interface.sh # Provider abstraction
 │       ├── bitwarden.sh  # Bitwarden implementation
 │       └── onepassword.sh # 1Password implementation
-├── config/
-│   └── field-names.json  # Variable name mapping
 └── README.md
 ```
 

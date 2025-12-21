@@ -13,13 +13,13 @@ NC='\033[0m' # No Color
 DRY_RUN=${DRY_RUN:-false}
 VERBOSE=${VERBOSE:-false}
 
-# Logging functions
-log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+# Logging functions - all go to stderr to not interfere with function return values
+log_info() { echo -e "${GREEN}[INFO]${NC} $1" >&2; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1" >&2; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
-log_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
-log_verbose() { $VERBOSE && echo -e "${CYAN}[DEBUG]${NC} $1" || true; }
-log_dry_run() { echo -e "${YELLOW}[DRY-RUN]${NC} Would: $1"; }
+log_step() { echo -e "${BLUE}[STEP]${NC} $1" >&2; }
+log_verbose() { $VERBOSE && echo -e "${CYAN}[DEBUG]${NC} $1" >&2 || true; }
+log_dry_run() { echo -e "${YELLOW}[DRY-RUN]${NC} Would: $1" >&2; }
 
 # Check required commands
 check_requirements() {
@@ -54,36 +54,6 @@ get_loader_root() {
     local script_path="${BASH_SOURCE[0]}"
     local lib_dir="$(cd "$(dirname "$script_path")" && pwd)"
     echo "$(dirname "$lib_dir")"
-}
-
-# Load the field names mapping
-load_field_names() {
-    local loader_root="$(get_loader_root)"
-    local config_file="$loader_root/config/field-names.json"
-
-    if [[ ! -f "$config_file" ]]; then
-        log_error "Field names config not found: $config_file"
-        return 1
-    fi
-
-    cat "$config_file"
-}
-
-# Get Bitwarden field name for a Terraform variable
-get_bitwarden_field_name() {
-    local tf_var="$1"
-    local field_names="$2"
-
-    echo "$field_names" | jq -r --arg var "$tf_var" '.[$var] // $var'
-}
-
-# Get Terraform variable name for a Bitwarden field
-get_terraform_var_name() {
-    local bw_field="$1"
-    local field_names="$2"
-
-    # Reverse lookup - find key by value
-    echo "$field_names" | jq -r --arg field "$bw_field" 'to_entries | .[] | select(.value == $field) | .key // $field'
 }
 
 # List of sensitive variables (should be marked sensitive in tfvars)

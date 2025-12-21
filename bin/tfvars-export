@@ -283,13 +283,35 @@ main() {
     # Sync vault
     provider_sync
 
-    # Build fields JSON
+    # Build fields JSON from parsed CONFIG_* variables
     log_step "Building configuration..."
-    local fields_json
-    fields_json=$(provider_build_fields_json)
+    local fields_json="[]"
+    local field_count=0
 
-    local field_count
-    field_count=$(echo "$fields_json" | jq 'length')
+    # Iterate through all CONFIG_* environment variables
+    while IFS='=' read -r name value; do
+        # Skip if empty
+        [[ -z "$value" ]] && continue
+
+        # Convert CONFIG_VAR_NAME to var_name
+        local var_name="${name#CONFIG_}"
+        var_name=$(echo "$var_name" | tr '[:upper:]' '[:lower:]')
+
+        # Determine if this is a sensitive field (type: 1 = hidden)
+        local field_type=0
+        if is_sensitive_var "$var_name"; then
+            field_type=1
+        fi
+
+        # Add to fields array
+        fields_json=$(echo "$fields_json" | jq \
+            --arg name "$var_name" \
+            --arg value "$value" \
+            --argjson type "$field_type" \
+            '. + [{name: $name, value: $value, type: $type}]')
+        ((field_count++))
+    done < <(env | grep "^CONFIG_" | sort)
+
     log_info "Fields to export: $field_count"
 
     # Check if item exists

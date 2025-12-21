@@ -319,10 +319,6 @@ main() {
         exit 1
     fi
 
-    # Load field names mapping
-    local field_names
-    field_names=$(load_field_names)
-
     # Generate tfvars
     local output_file="$TERRAFORM_DIR/terraform.tfvars"
 
@@ -347,20 +343,11 @@ main() {
     while IFS= read -r var_name; do
         [[ -z "$var_name" ]] && continue
 
-        # Get the Bitwarden field name for this variable
-        local bw_field
-        bw_field=$(get_bitwarden_field_name "$var_name" "$field_names")
+        log_verbose "Looking for field: $var_name"
 
-        log_verbose "Variable: $var_name -> Bitwarden field: $bw_field"
-
-        # Get value from vault
+        # Get value from vault - field name = variable name
         local value
-        value=$(provider_get_field "$item_json" "$bw_field")
-
-        if [[ -z "$value" ]]; then
-            # Try the variable name directly as field name
-            value=$(provider_get_field "$item_json" "$var_name")
-        fi
+        value=$(provider_get_field "$item_json" "$var_name")
 
         if [[ -n "$value" ]]; then
             if $DRY_RUN; then
@@ -375,7 +362,7 @@ main() {
             ((written++))
         else
             missing+=("$var_name")
-            log_verbose "No value found for: $var_name (field: $bw_field)"
+            log_verbose "No value found for: $var_name"
         fi
     done <<< "$all_vars"
 
