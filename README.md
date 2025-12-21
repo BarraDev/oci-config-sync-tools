@@ -1,11 +1,11 @@
 # Terraform tfvars Loader
 
-CLI tools to manage Terraform variables using Bitwarden or 1Password as a secrets store.
+CLI tools to manage Terraform variables using Bitwarden, 1Password, or LastPass as a secrets store.
 
 ## Features
 
 - **Smart Variable Detection**: Automatically parses `_variables.tf` to find required variables
-- **Vault Integration**: Supports both Bitwarden and 1Password
+- **Vault Integration**: Supports Bitwarden, 1Password, and LastPass
 - **Minimal tfvars**: Generates only the variables your project needs
 - **Bidirectional Sync**: Export from tfvars to vault, import from vault to tfvars
 
@@ -63,6 +63,19 @@ export PATH="$PATH:/path/to/terraform-oci-tfvars-loader/bin"
 ./bin/tfvars-export --update terraform/config
 ```
 
+### Cleanup generated tfvars
+
+```bash
+# Remove generated tfvars files (contains secrets)
+./bin/tfvars-cleanup terraform/config
+
+# Preview what would be removed
+./bin/tfvars-cleanup --dry-run terraform/config
+
+# Clean all terraform directories in a project
+./bin/tfvars-cleanup --recursive /path/to/project
+```
+
 ## How It Works
 
 ### Smart Variable Detection
@@ -103,6 +116,7 @@ OCI Terraform - example.com
 - One of:
   - `bw` - Bitwarden CLI
   - `op` - 1Password CLI
+  - `lpass` - LastPass CLI
 
 ## Vault Provider Setup
 
@@ -124,9 +138,30 @@ bw unlock
 # Install
 brew install 1password-cli  # macOS
 
-# Login
+# Login (uses desktop app integration)
 op signin
+
+# Or use service account for CI/CD
+export OP_SERVICE_ACCOUNT_TOKEN="your-token"
 ```
+
+### LastPass
+
+```bash
+# Install
+brew install lastpass-cli  # macOS
+sudo apt install lastpass-cli  # Debian/Ubuntu
+
+# Login
+lpass login your@email.com
+
+# Or set email via environment
+export LASTPASS_EMAIL="your@email.com"
+lpass login
+```
+
+> **Note**: LastPass stores custom fields in the Notes section of Secure Notes.
+> Free accounts may have CLI access limitations.
 
 ## Project Structure
 
@@ -134,14 +169,16 @@ op signin
 terraform-oci-tfvars-loader/
 ├── bin/
 │   ├── tfvars-setup      # Generate tfvars from vault
-│   └── tfvars-export     # Export tfvars to vault
+│   ├── tfvars-export     # Export tfvars to vault
+│   └── tfvars-cleanup    # Remove generated tfvars files
 ├── lib/
 │   ├── common.sh         # Shared utilities
 │   ├── tfvars-parser.sh  # Parse _variables.tf
 │   └── vault-providers/
-│       ├── _interface.sh # Provider abstraction
-│       ├── bitwarden.sh  # Bitwarden implementation
-│       └── onepassword.sh # 1Password implementation
+│       ├── _interface.sh  # Provider abstraction
+│       ├── bitwarden.sh   # Bitwarden implementation
+│       ├── onepassword.sh # 1Password implementation
+│       └── lastpass.sh    # LastPass implementation
 └── README.md
 ```
 
@@ -159,8 +196,12 @@ terraform-oci-tfvars-loader/
 cd terraform/config
 terraform init
 terraform plan
+terraform apply
 
-# 4. After updating tfvars - sync back to vault
+# 4. Cleanup secrets from disk
+./bin/tfvars-cleanup terraform/config
+
+# 5. After updating tfvars - sync back to vault
 ./bin/tfvars-export terraform/config
 ```
 
