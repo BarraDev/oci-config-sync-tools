@@ -12,9 +12,15 @@
 #     item_name     = "OCI Terraform - example.com"
 #   }
 #
-# Requirements (embedded_client = true, default):
-#   - BW_EMAIL: Your Bitwarden email
-#   - BW_PASSWORD: Your master password
+# Authentication options (embedded_client = true, default):
+#   Option 1 - API Key (recommended, works with 2FA):
+#     - BW_CLIENTID: API client ID from Bitwarden settings
+#     - BW_CLIENTSECRET: API client secret
+#     - BW_PASSWORD: Master password (still needed to decrypt vault)
+#
+#   Option 2 - Password only (no 2FA):
+#     - BW_EMAIL: Your Bitwarden email
+#     - BW_PASSWORD: Your master password
 #
 # Alternative (embedded_client = false):
 #   - Bitwarden CLI installed
@@ -27,10 +33,14 @@
 
 provider "bitwarden" {
   # Authentication depends on embedded_client mode:
-  # - embedded_client = true (default): uses BW_EMAIL + BW_PASSWORD
+  # - embedded_client = true (default): uses API Key or Email+Password
   # - embedded_client = false: uses BW_SESSION (external CLI)
   email  = var.bitwarden_email != "" ? var.bitwarden_email : null
   server = var.bitwarden_server != "" ? var.bitwarden_server : null
+
+  # API Key authentication (works with 2FA enabled)
+  client_id     = var.bitwarden_client_id != "" ? var.bitwarden_client_id : null
+  client_secret = var.bitwarden_client_secret != "" ? var.bitwarden_client_secret : null
 
   # Only use master_password with embedded client
   master_password = var.bitwarden_embedded_client ? (

@@ -43,6 +43,19 @@ variable "bitwarden_session_key" {
   sensitive   = true
 }
 
+variable "bitwarden_client_id" {
+  description = "Bitwarden API client ID (can also use BW_CLIENTID env var). Get from Bitwarden Settings → Security → Keys."
+  type        = string
+  default     = ""
+}
+
+variable "bitwarden_client_secret" {
+  description = "Bitwarden API client secret (can also use BW_CLIENTSECRET env var)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # =============================================================================
 # FIELD MAPPING (customize field names if different from defaults)
 # =============================================================================
