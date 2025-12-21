@@ -90,21 +90,29 @@ provider_create_item() {
 provider_update_item() {
     local item_id="$1"
     local item_name="$2"
-    local fields_json="$3"
+    local new_fields_json="$3"
+
+    # Get existing item to preserve fields not in new_fields
+    local existing_item
+    existing_item=$(bw get item "$item_id" 2>/dev/null)
+
+    # Merge fields: new fields override existing, but keep fields not in new
+    local merged_fields
+    merged_fields=$(echo "$existing_item" | jq --argjson new "$new_fields_json" '
+        # Get existing fields as object keyed by name
+        (.fields // []) as $existing |
+        # Get new fields as object keyed by name
+        ($new | map({(.name): .}) | add // {}) as $new_obj |
+        # Get existing as object keyed by name
+        ($existing | map({(.name): .}) | add // {}) as $existing_obj |
+        # Merge: existing + new (new overrides)
+        ($existing_obj + $new_obj) | to_entries | map(.value)
+    ')
 
     local item_json
-    item_json=$(jq -n \
-        --arg id "$item_id" \
-        --arg name "$item_name" \
-        --argjson fields "$fields_json" \
-        '{
-            id: $id,
-            type: 2,
-            secureNote: { type: 0 },
-            name: $name,
-            notes: "Terraform configuration for OCI Kubernetes cluster. Updated by tfvars-setup.",
-            fields: $fields
-        }')
+    item_json=$(echo "$existing_item" | jq \
+        --argjson fields "$merged_fields" \
+        '.fields = $fields | .notes = "Terraform configuration for OCI Kubernetes cluster. Updated by tfvars-setup."')
 
     echo "$item_json" | bw encode | bw edit item "$item_id"
 }
