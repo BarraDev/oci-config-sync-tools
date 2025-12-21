@@ -203,11 +203,6 @@ provider_build_fields_json() {
     _add_bw_field "kubernetes_x86_memory_gb" "${CONFIG_KUBERNETES_X86_MEMORY:-}"
     _add_bw_field "kubernetes_x86_shape" "${CONFIG_KUBERNETES_X86_SHAPE:-}"
 
-    # Apps Repository (optional)
-    _add_bw_field "apps_enabled" "${CONFIG_APPS_ENABLED:-}"
-    _add_bw_field "apps_github_org" "${CONFIG_APPS_GITHUB_ORG:-}"
-    _add_bw_field "apps_github_repo" "${CONFIG_APPS_GITHUB_REPO:-}"
-
     # GitHub ARC
     _add_bw_field "github_arc_app_id" "${CONFIG_GITHUB_ARC_APP_ID:-}"
     _add_bw_field "github_arc_private_key" "${CONFIG_GITHUB_ARC_PRIVATE_KEY:-}" 1
