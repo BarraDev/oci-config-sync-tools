@@ -349,6 +349,23 @@ main() {
         local value
         value=$(provider_get_field "$item_json" "$var_name")
 
+        # Fallback: try legacy field names (oci_* prefix, etc.)
+        if [[ -z "$value" ]]; then
+            case "$var_name" in
+                compartment_id) value=$(provider_get_field "$item_json" "oci_compartment_id") ;;
+                tenancy_id) value=$(provider_get_field "$item_json" "oci_tenancy_ocid") ;;
+                vault_id) value=$(provider_get_field "$item_json" "oci_vault_id") ;;
+                region) value=$(provider_get_field "$item_json" "oci_region") ;;
+                public_subnet_id) value=$(provider_get_field "$item_json" "oci_public_subnet_id") ;;
+                namespace) value=$(provider_get_field "$item_json" "oci_namespace") ;;
+                user_ocid) value=$(provider_get_field "$item_json" "oci_user_ocid") ;;
+                fingerprint) value=$(provider_get_field "$item_json" "oci_fingerprint") ;;
+                private_key) value=$(provider_get_field "$item_json" "oci_private_key") ;;
+                github_token) value=$(provider_get_field "$item_json" "gh_token") ;;
+            esac
+            [[ -n "$value" ]] && log_verbose "  (using legacy field name)"
+        fi
+
         if [[ -n "$value" ]]; then
             if $DRY_RUN; then
                 if is_sensitive_var "$var_name"; then
@@ -359,7 +376,7 @@ main() {
             else
                 write_tfvar "$output_file" "$var_name" "$value"
             fi
-            ((written++))
+            written=$((written + 1))
         else
             missing+=("$var_name")
             log_verbose "No value found for: $var_name"
