@@ -140,6 +140,81 @@ output "apps_github_repo" {
 }
 
 # =============================================================================
+# DEX (OIDC) CONFIGURATION
+# =============================================================================
+
+output "github_dex_client_id" {
+  description = "GitHub OAuth App Client ID for Dex"
+  value       = nonsensitive(local.get_field["github_dex_client_id"])
+}
+
+output "github_dex_client_secret" {
+  description = "GitHub OAuth App Client Secret for Dex"
+  value       = local.get_field["github_dex_client_secret"]
+  sensitive   = true
+}
+
+# =============================================================================
+# TELEPORT CONFIGURATION
+# =============================================================================
+
+output "teleport_github_org" {
+  description = "GitHub organization for Teleport"
+  value       = nonsensitive(local.get_field["teleport_github_org"])
+}
+
+output "teleport_github_client_id" {
+  description = "GitHub OAuth Client ID for Teleport"
+  value       = nonsensitive(local.get_field["teleport_github_client_id"])
+}
+
+output "teleport_github_client_secret" {
+  description = "GitHub OAuth Client Secret for Teleport"
+  value       = local.get_field["teleport_github_client_secret"]
+  sensitive   = true
+}
+
+# =============================================================================
+# TELEGRAM CONFIGURATION
+# =============================================================================
+
+output "telegram_bot_token" {
+  description = "Telegram bot token for notifications"
+  value       = local.get_field["telegram_bot_token"]
+  sensitive   = true
+}
+
+output "telegram_chat_id" {
+  description = "Telegram chat ID for notifications"
+  value       = local.get_field["telegram_chat_id"]
+  sensitive   = true
+}
+
+# =============================================================================
+# CLOUDFLARE CONFIGURATION
+# =============================================================================
+
+output "cloudflare_api_token" {
+  description = "Cloudflare API token"
+  value       = local.get_field["cloudflare_api_token"]
+  sensitive   = true
+}
+
+# =============================================================================
+# ADDITIONAL FIELDS
+# =============================================================================
+
+output "admin_username" {
+  description = "Admin username"
+  value       = nonsensitive(local.get_field["admin_username"])
+}
+
+output "ssh_public_key" {
+  description = "SSH public key"
+  value       = nonsensitive(local.get_field["ssh_public_key"])
+}
+
+# =============================================================================
 # RAW FIELDS (for accessing any field by name)
 # =============================================================================
 
