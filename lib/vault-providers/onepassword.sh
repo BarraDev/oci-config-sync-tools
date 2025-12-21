@@ -24,24 +24,42 @@ provider_install_instructions() {
 }
 
 provider_login() {
-    # Check if already signed in
-    if op account list &>/dev/null; then
-        # Check if session is valid
-        if op vault list &>/dev/null; then
-            log_info "1Password: Session active"
-            return 0
-        fi
+    # Check if already signed in and session is valid
+    if op account list &>/dev/null && op vault list &>/dev/null; then
+        log_info "1Password: Session active"
+        return 0
     fi
 
     log_step "1Password: Signing in..."
-    # op signin will prompt for credentials and set up the session
-    eval $(op signin)
-    return $?
+
+    # Modern 1Password CLI (v2+) uses different auth methods:
+    # 1. Desktop app integration (preferred): op signin
+    # 2. Service account: OP_SERVICE_ACCOUNT_TOKEN env var
+    # 3. Manual: op signin --account <account>
+
+    if [[ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]]; then
+        # Service account token is set, no interactive login needed
+        log_info "1Password: Using service account token"
+        return 0
+    fi
+
+    # Try interactive signin (will use desktop app if available)
+    if ! eval $(op signin 2>/dev/null); then
+        log_error "1Password: Failed to sign in"
+        log_info "Tips:"
+        log_info "  - Ensure 1Password desktop app is running and unlocked"
+        log_info "  - Or set OP_SERVICE_ACCOUNT_TOKEN for non-interactive use"
+        log_info "  - Or run: op signin --account <your-account>"
+        return 1
+    fi
+
+    return 0
 }
 
 provider_list_items() {
     # Search for items with "OCI Terraform -" in the title
-    op item list --categories "Secure Note" --format json 2>/dev/null | \
+    # Don't restrict by category - user may use different item types
+    op item list --format json 2>/dev/null | \
         jq -r '.[] | select(.title | startswith("OCI Terraform -")) | .title' 2>/dev/null || echo ""
 }
 
