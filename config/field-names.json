@@ -2,6 +2,7 @@
   "_comment": "Mapping: Terraform variable name -> Bitwarden field name",
 
   "compartment_id": "oci_compartment_id",
+  "public_subnet_id": "oci_public_subnet_id",
   "tenancy_id": "oci_tenancy_ocid",
   "region": "oci_region",
   "vault_id": "oci_vault_id",
@@ -19,6 +20,7 @@
   "github_repo": "github_repo",
   "github_email": "github_email",
   "github_token": "gh_token",
+  "gh_token": "gh_token",
 
   "github_app_id": "github_app_id",
   "github_app_installation_id": "github_app_installation_id",
