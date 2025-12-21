@@ -1,0 +1,342 @@
+#!/bin/bash
+# tfvars-export - Export terraform.tfvars to Bitwarden/1Password
+#
+# This script:
+# 1. Parses terraform.tfvars to extract variable values
+# 2. Creates or updates a vault item with the configuration
+#
+# Usage: tfvars-export [options] [terraform_dir]
+#
+# Examples:
+#   tfvars-export terraform/config     # Export config tfvars to vault
+#   tfvars-export terraform/infra      # Export infra tfvars to vault
+#   tfvars-export --domain example.com # Specify domain explicitly
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOADER_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Source libraries
+source "$LOADER_ROOT/lib/common.sh"
+source "$LOADER_ROOT/lib/vault-providers/_interface.sh"
+
+# ============================================================================
+# HELP
+# ============================================================================
+
+show_help() {
+    cat << EOF
+Usage: tfvars-export [options] [terraform_dir]
+
+Export terraform.tfvars to vault provider (Bitwarden/1Password).
+
+The script reads terraform.tfvars and creates or updates a vault item
+with the configuration values.
+
+Options:
+  --domain DOMAIN   Domain for the vault item (e.g., example.com)
+  --dry-run         Show what would be done without making changes
+  --verbose         Enable verbose output for debugging
+  --create          Create new item (fail if exists)
+  --update          Update existing item (fail if not exists)
+  --help            Show this help message
+
+Arguments:
+  terraform_dir     Path to Terraform directory (default: current directory)
+
+Examples:
+  tfvars-export terraform/config          # Export config to vault
+  tfvars-export terraform/infra           # Export infra to vault
+  tfvars-export --domain example.com .    # Use specific domain
+
+Supported vault providers:
+  - BitWarden (bw)
+  - 1Password (op)
+
+EOF
+    exit 0
+}
+
+# ============================================================================
+# ARGUMENT PARSING
+# ============================================================================
+
+DOMAIN=""
+TERRAFORM_DIR=""
+CREATE_ONLY=false
+UPDATE_ONLY=false
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --domain)
+                DOMAIN="$2"
+                shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --verbose)
+                VERBOSE=true
+                shift
+                ;;
+            --create)
+                CREATE_ONLY=true
+                shift
+                ;;
+            --update)
+                UPDATE_ONLY=true
+                shift
+                ;;
+            --help|-h)
+                show_help
+                ;;
+            -*)
+                log_error "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+            *)
+                TERRAFORM_DIR="$1"
+                shift
+                ;;
+        esac
+    done
+
+    # Default to current directory
+    if [[ -z "$TERRAFORM_DIR" ]]; then
+        TERRAFORM_DIR="."
+    fi
+
+    # Resolve to absolute path
+    TERRAFORM_DIR="$(cd "$TERRAFORM_DIR" 2>/dev/null && pwd)" || {
+        log_error "Directory not found: $TERRAFORM_DIR"
+        exit 1
+    }
+}
+
+# ============================================================================
+# TFVARS PARSING
+# ============================================================================
+
+# Parse terraform.tfvars and extract variable values
+# Sets CONFIG_* variables for each tfvar
+parse_tfvars() {
+    local file="$1"
+
+    if [[ ! -f "$file" ]]; then
+        log_error "File not found: $file"
+        return 1
+    fi
+
+    log_verbose "Parsing: $file"
+
+    # Use a more robust parser that handles multiline values
+    local current_var=""
+    local in_heredoc=false
+    local heredoc_marker=""
+    local heredoc_value=""
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Skip comments and empty lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${line// }" ]] && continue
+
+        if $in_heredoc; then
+            if [[ "$line" == "$heredoc_marker" ]]; then
+                # End of heredoc
+                local var_upper
+                var_upper=$(echo "$current_var" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+                export "CONFIG_$var_upper=$heredoc_value"
+                log_verbose "Parsed (heredoc): $current_var"
+                in_heredoc=false
+                heredoc_value=""
+            else
+                heredoc_value+="$line"$'\n'
+            fi
+            continue
+        fi
+
+        # Check for heredoc start
+        if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*=[[:space:]]*\<\<-?([A-Z]+) ]]; then
+            current_var="${BASH_REMATCH[1]}"
+            heredoc_marker="${BASH_REMATCH[2]}"
+            in_heredoc=true
+            heredoc_value=""
+            continue
+        fi
+
+        # Simple key = "value" or key = value
+        if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*=[[:space:]]*(.+) ]]; then
+            local var_name="${BASH_REMATCH[1]}"
+            local var_value="${BASH_REMATCH[2]}"
+
+            # Remove quotes if present
+            var_value="${var_value#\"}"
+            var_value="${var_value%\"}"
+
+            # Convert to CONFIG_* format
+            local var_upper
+            var_upper=$(echo "$var_name" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+            export "CONFIG_$var_upper=$var_value"
+            log_verbose "Parsed: $var_name = ${var_value:0:30}..."
+        fi
+    done < "$file"
+}
+
+# ============================================================================
+# PROVIDER SELECTION
+# ============================================================================
+
+select_provider() {
+    local available
+    available=$(detect_available_providers)
+
+    if [[ -z "$available" ]]; then
+        log_error "No vault providers installed!"
+        show_all_provider_instructions
+        exit 1
+    fi
+
+    local provider_count
+    provider_count=$(echo "$available" | wc -w)
+
+    if [[ $provider_count -eq 1 ]]; then
+        echo "$available"
+        return
+    fi
+
+    echo "Available vault providers:" >&2
+    local i=1
+    local providers=($available)
+    for p in "${providers[@]}"; do
+        echo "  $i) $p" >&2
+        ((i++))
+    done
+
+    read -p "Select provider [1]: " choice
+    choice=${choice:-1}
+
+    if [[ $choice -lt 1 || $choice -gt ${#providers[@]} ]]; then
+        log_error "Invalid selection"
+        exit 1
+    fi
+
+    echo "${providers[$((choice-1))]}"
+}
+
+# ============================================================================
+# MAIN LOGIC
+# ============================================================================
+
+main() {
+    parse_args "$@"
+
+    log_info "tfvars-export - Export terraform.tfvars to vault"
+    log_verbose "Terraform directory: $TERRAFORM_DIR"
+
+    # Check requirements
+    check_requirements || exit 1
+
+    # Find terraform.tfvars
+    local tfvars_file="$TERRAFORM_DIR/terraform.tfvars"
+    if [[ ! -f "$tfvars_file" ]]; then
+        log_error "No terraform.tfvars found in $TERRAFORM_DIR"
+        exit 1
+    fi
+
+    # Parse tfvars
+    log_step "Parsing $tfvars_file..."
+    parse_tfvars "$tfvars_file"
+
+    # Get domain from tfvars or argument
+    if [[ -z "$DOMAIN" ]]; then
+        DOMAIN="${CONFIG_DOMAIN:-}"
+    fi
+
+    if [[ -z "$DOMAIN" ]]; then
+        log_error "Domain not specified. Use --domain or set 'domain' in terraform.tfvars"
+        exit 1
+    fi
+
+    log_info "Exporting configuration for: $DOMAIN"
+
+    # Select and load provider
+    log_step "Detecting vault providers..."
+    local provider
+    provider=$(select_provider)
+    log_info "Using provider: $provider"
+
+    load_provider "$provider" || {
+        log_error "Failed to load provider: $provider"
+        exit 1
+    }
+
+    # Login to vault
+    provider_login || {
+        log_error "Failed to login to vault"
+        exit 1
+    }
+
+    # Sync vault
+    provider_sync
+
+    # Build fields JSON
+    log_step "Building configuration..."
+    local fields_json
+    fields_json=$(provider_build_fields_json)
+
+    local field_count
+    field_count=$(echo "$fields_json" | jq 'length')
+    log_info "Fields to export: $field_count"
+
+    # Check if item exists
+    local item_name="OCI Terraform - $DOMAIN"
+    local existing_item
+    existing_item=$(provider_get_item "$item_name" 2>/dev/null || echo "")
+
+    if $DRY_RUN; then
+        if [[ -n "$existing_item" && "$existing_item" != "null" ]]; then
+            log_dry_run "Update existing item: $item_name"
+        else
+            log_dry_run "Create new item: $item_name"
+        fi
+        log_dry_run "Export $field_count fields"
+        exit 0
+    fi
+
+    if [[ -n "$existing_item" && "$existing_item" != "null" ]]; then
+        if $CREATE_ONLY; then
+            log_error "Item already exists: $item_name"
+            log_info "Use --update to update existing item"
+            exit 1
+        fi
+
+        # Update existing item
+        log_step "Updating existing item: $item_name"
+        local item_id
+        item_id=$(provider_get_item_id "$existing_item")
+        provider_update_item "$item_id" "$item_name" "$fields_json" > /dev/null
+        log_info "Item updated successfully"
+    else
+        if $UPDATE_ONLY; then
+            log_error "Item not found: $item_name"
+            log_info "Use --create to create new item"
+            exit 1
+        fi
+
+        # Create new item
+        log_step "Creating new item: $item_name"
+        provider_create_item "$item_name" "$fields_json" > /dev/null
+        log_info "Item created successfully"
+    fi
+
+    # Sync to ensure changes are propagated
+    provider_sync
+
+    log_info "Export complete: $item_name"
+}
+
+main "$@"

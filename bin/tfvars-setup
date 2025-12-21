@@ -1,0 +1,399 @@
+#!/bin/bash
+# tfvars-setup - Generate terraform.tfvars from Bitwarden/1Password
+#
+# This script:
+# 1. Parses _variables.tf to find required variables (no defaults)
+# 2. Loads values from vault provider (Bitwarden/1Password)
+# 3. Generates terraform.tfvars with only the needed variables
+#
+# Usage: tfvars-setup [options] [terraform_dir]
+#
+# Examples:
+#   tfvars-setup terraform/config     # Generate tfvars for config project
+#   tfvars-setup terraform/infra      # Generate tfvars for infra project
+#   tfvars-setup --domain example.com # Specify domain explicitly
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOADER_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Source libraries
+source "$LOADER_ROOT/lib/common.sh"
+source "$LOADER_ROOT/lib/tfvars-parser.sh"
+source "$LOADER_ROOT/lib/vault-providers/_interface.sh"
+
+# ============================================================================
+# HELP
+# ============================================================================
+
+show_help() {
+    cat << EOF
+Usage: tfvars-setup [options] [terraform_dir]
+
+Generate terraform.tfvars from vault provider (Bitwarden/1Password).
+
+The script analyzes _variables.tf to find required variables (those without
+defaults), loads their values from the vault, and generates terraform.tfvars.
+
+Options:
+  --domain DOMAIN   Domain to load configuration for (e.g., example.com)
+  --dry-run         Show what would be done without making changes
+  --verbose         Enable verbose output for debugging
+  --include-optional  Also include optional variables (with defaults)
+  --help            Show this help message
+
+Arguments:
+  terraform_dir     Path to Terraform directory (default: current directory)
+
+Examples:
+  tfvars-setup terraform/config          # Generate tfvars for config
+  tfvars-setup terraform/infra           # Generate tfvars for infra
+  tfvars-setup --domain example.com .    # Use specific domain
+  tfvars-setup --dry-run terraform/config # Preview changes
+
+Supported vault providers:
+  - BitWarden (bw)
+  - 1Password (op)
+
+EOF
+    exit 0
+}
+
+# ============================================================================
+# ARGUMENT PARSING
+# ============================================================================
+
+DOMAIN=""
+TERRAFORM_DIR=""
+INCLUDE_OPTIONAL=false
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --domain)
+                DOMAIN="$2"
+                shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=true
+                shift
+                ;;
+            --verbose)
+                VERBOSE=true
+                shift
+                ;;
+            --include-optional)
+                INCLUDE_OPTIONAL=true
+                shift
+                ;;
+            --help|-h)
+                show_help
+                ;;
+            -*)
+                log_error "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+            *)
+                TERRAFORM_DIR="$1"
+                shift
+                ;;
+        esac
+    done
+
+    # Default to current directory
+    if [[ -z "$TERRAFORM_DIR" ]]; then
+        TERRAFORM_DIR="."
+    fi
+
+    # Resolve to absolute path
+    TERRAFORM_DIR="$(cd "$TERRAFORM_DIR" 2>/dev/null && pwd)" || {
+        log_error "Directory not found: $TERRAFORM_DIR"
+        exit 1
+    }
+}
+
+# ============================================================================
+# PROVIDER SELECTION
+# ============================================================================
+
+select_provider() {
+    local available
+    available=$(detect_available_providers)
+
+    if [[ -z "$available" ]]; then
+        log_error "No vault providers installed!"
+        echo ""
+        show_all_provider_instructions
+        exit 1
+    fi
+
+    # If only one provider, use it
+    local provider_count
+    provider_count=$(echo "$available" | wc -w)
+
+    if [[ $provider_count -eq 1 ]]; then
+        echo "$available"
+        return
+    fi
+
+    # Multiple providers - let user choose
+    echo "Available vault providers:" >&2
+    local i=1
+    local providers=($available)
+    for p in "${providers[@]}"; do
+        echo "  $i) $p" >&2
+        ((i++))
+    done
+
+    read -p "Select provider [1]: " choice
+    choice=${choice:-1}
+
+    if [[ $choice -lt 1 || $choice -gt ${#providers[@]} ]]; then
+        log_error "Invalid selection"
+        exit 1
+    fi
+
+    echo "${providers[$((choice-1))]}"
+}
+
+# ============================================================================
+# DOMAIN SELECTION
+# ============================================================================
+
+select_domain() {
+    local provider="$1"
+
+    # If domain already specified, use it
+    if [[ -n "$DOMAIN" ]]; then
+        echo "$DOMAIN"
+        return
+    fi
+
+    # Try to read from existing tfvars
+    local tfvars_file="$TERRAFORM_DIR/terraform.tfvars"
+    if [[ -f "$tfvars_file" ]]; then
+        local existing_domain
+        existing_domain=$(grep -E '^domain\s*=' "$tfvars_file" | sed -E 's/domain\s*=\s*"([^"]+)".*/\1/' | head -1)
+        if [[ -n "$existing_domain" ]]; then
+            log_verbose "Found domain in existing tfvars: $existing_domain"
+            echo "$existing_domain"
+            return
+        fi
+    fi
+
+    # List items from vault
+    log_step "Loading items from vault..."
+    local items
+    items=$(provider_list_items)
+
+    if [[ -z "$items" ]]; then
+        log_error "No 'OCI Terraform - *' items found in vault"
+        log_info "Create an item named 'OCI Terraform - yourdomain.com' first"
+        exit 1
+    fi
+
+    # Extract domains from item names
+    local domains=()
+    while IFS= read -r item; do
+        local domain="${item#OCI Terraform - }"
+        domains+=("$domain")
+    done <<< "$items"
+
+    if [[ ${#domains[@]} -eq 1 ]]; then
+        echo "${domains[0]}"
+        return
+    fi
+
+    # Multiple domains - let user choose
+    echo "Available configurations:" >&2
+    local i=1
+    for d in "${domains[@]}"; do
+        echo "  $i) $d" >&2
+        ((i++))
+    done
+
+    read -p "Select configuration [1]: " choice
+    choice=${choice:-1}
+
+    if [[ $choice -lt 1 || $choice -gt ${#domains[@]} ]]; then
+        log_error "Invalid selection"
+        exit 1
+    fi
+
+    echo "${domains[$((choice-1))]}"
+}
+
+# ============================================================================
+# MAIN LOGIC
+# ============================================================================
+
+main() {
+    parse_args "$@"
+
+    log_info "tfvars-setup - Generate terraform.tfvars from vault"
+    log_verbose "Terraform directory: $TERRAFORM_DIR"
+
+    # Check requirements
+    check_requirements || exit 1
+
+    # Find _variables.tf
+    local vars_file="$TERRAFORM_DIR/_variables.tf"
+    if [[ ! -f "$vars_file" ]]; then
+        vars_file="$TERRAFORM_DIR/variables.tf"
+    fi
+
+    if [[ ! -f "$vars_file" ]]; then
+        log_error "No _variables.tf or variables.tf found in $TERRAFORM_DIR"
+        exit 1
+    fi
+
+    log_verbose "Variables file: $vars_file"
+
+    # Parse required variables
+    log_step "Analyzing $vars_file..."
+    local required_vars
+    required_vars=$(parse_required_variables "$vars_file")
+
+    if [[ -z "$required_vars" ]]; then
+        log_info "No required variables found (all have defaults)"
+        if ! $INCLUDE_OPTIONAL; then
+            log_info "Use --include-optional to also set optional variables"
+            exit 0
+        fi
+    fi
+
+    local var_count
+    var_count=$(echo "$required_vars" | grep -c . || echo 0)
+    log_info "Found $var_count required variables"
+    log_verbose "Required variables: $(echo $required_vars | tr '\n' ' ')"
+
+    # Add optional variables if requested
+    local all_vars="$required_vars"
+    if $INCLUDE_OPTIONAL; then
+        local optional_vars
+        optional_vars=$(parse_optional_variables "$vars_file")
+        if [[ -n "$optional_vars" ]]; then
+            all_vars="$required_vars"$'\n'"$optional_vars"
+            local opt_count
+            opt_count=$(echo "$optional_vars" | grep -c . || echo 0)
+            log_info "Including $opt_count optional variables"
+        fi
+    fi
+
+    # Select and load provider
+    log_step "Detecting vault providers..."
+    local provider
+    provider=$(select_provider)
+    log_info "Using provider: $provider"
+
+    load_provider "$provider" || {
+        log_error "Failed to load provider: $provider"
+        exit 1
+    }
+
+    # Login to vault
+    provider_login || {
+        log_error "Failed to login to vault"
+        exit 1
+    }
+
+    # Sync vault
+    provider_sync
+
+    # Select domain
+    local domain
+    domain=$(select_domain "$provider")
+    log_info "Loading configuration for: $domain"
+
+    # Load item from vault
+    local item_name="OCI Terraform - $domain"
+    log_step "Loading item: $item_name"
+
+    local item_json
+    item_json=$(provider_get_item "$item_name")
+
+    if [[ -z "$item_json" || "$item_json" == "null" ]]; then
+        log_error "Item not found: $item_name"
+        exit 1
+    fi
+
+    # Load field names mapping
+    local field_names
+    field_names=$(load_field_names)
+
+    # Generate tfvars
+    local output_file="$TERRAFORM_DIR/terraform.tfvars"
+
+    if $DRY_RUN; then
+        log_dry_run "Generate $output_file with:"
+    else
+        log_step "Generating $output_file..."
+        # Backup existing file
+        if [[ -f "$output_file" ]]; then
+            cp "$output_file" "$output_file.bak"
+            log_verbose "Backed up existing file to $output_file.bak"
+        fi
+        # Start fresh
+        echo "# Generated by tfvars-setup on $(date)" > "$output_file"
+        echo "# Domain: $domain" >> "$output_file"
+        echo "" >> "$output_file"
+    fi
+
+    local written=0
+    local missing=()
+
+    while IFS= read -r var_name; do
+        [[ -z "$var_name" ]] && continue
+
+        # Get the Bitwarden field name for this variable
+        local bw_field
+        bw_field=$(get_bitwarden_field_name "$var_name" "$field_names")
+
+        log_verbose "Variable: $var_name -> Bitwarden field: $bw_field"
+
+        # Get value from vault
+        local value
+        value=$(provider_get_field "$item_json" "$bw_field")
+
+        if [[ -z "$value" ]]; then
+            # Try the variable name directly as field name
+            value=$(provider_get_field "$item_json" "$var_name")
+        fi
+
+        if [[ -n "$value" ]]; then
+            if $DRY_RUN; then
+                if is_sensitive_var "$var_name"; then
+                    echo "  $var_name = <sensitive>"
+                else
+                    echo "  $var_name = \"${value:0:50}$([ ${#value} -gt 50 ] && echo '...')\""
+                fi
+            else
+                write_tfvar "$output_file" "$var_name" "$value"
+            fi
+            ((written++))
+        else
+            missing+=("$var_name")
+            log_verbose "No value found for: $var_name (field: $bw_field)"
+        fi
+    done <<< "$all_vars"
+
+    echo ""
+    log_info "Variables written: $written"
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        log_warn "Missing values for ${#missing[@]} variables:"
+        for m in "${missing[@]}"; do
+            echo "  - $m"
+        done
+        echo ""
+        log_info "Add these fields to '$item_name' in your vault, or set them manually in terraform.tfvars"
+    fi
+
+    if ! $DRY_RUN; then
+        log_info "Generated: $output_file"
+    fi
+}
+
+main "$@"

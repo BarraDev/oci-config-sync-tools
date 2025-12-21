@@ -1,0 +1,47 @@
+{
+  "_comment": "Mapping: Terraform variable name -> Bitwarden field name",
+
+  "compartment_id": "oci_compartment_id",
+  "tenancy_id": "oci_tenancy_ocid",
+  "region": "oci_region",
+  "vault_id": "oci_vault_id",
+  "oci_namespace": "oci_namespace",
+  "namespace": "oci_namespace",
+  "user_ocid": "oci_user_ocid",
+  "fingerprint": "oci_fingerprint",
+  "private_key": "oci_private_key",
+  "ssh_public_key": "ssh_public_key",
+
+  "domain": "domain",
+  "admin_username": "admin_username",
+
+  "github_org": "github_org",
+  "github_repo": "github_repo",
+  "github_email": "github_email",
+  "github_token": "gh_token",
+
+  "github_app_id": "github_app_id",
+  "github_app_installation_id": "github_app_installation_id",
+  "github_app_pem": "github_app_pem",
+
+  "github_arc_app_id": "github_arc_app_id",
+  "github_arc_private_key": "github_arc_private_key",
+  "github_arc_shingonoide_installation_id": "github_arc_shingonoide_installation_id",
+  "github_arc_dictmagic_installation_id": "github_arc_dictmagic_installation_id",
+
+  "github_dex_client_id": "github_dex_client_id",
+  "github_dex_client_secret": "github_dex_client_secret",
+
+  "teleport_github_org": "teleport_github_org",
+  "teleport_github_client_id": "teleport_github_client_id",
+  "teleport_github_client_secret": "teleport_github_client_secret",
+
+  "telegram_bot_token": "telegram_bot_token",
+  "telegram_chat_id": "telegram_chat_id",
+
+  "cloudflare_api_token": "cloudflare_api_token",
+
+  "apps_enabled": "apps_enabled",
+  "apps_github_org": "apps_github_org",
+  "apps_github_repo": "apps_github_repo"
+}
