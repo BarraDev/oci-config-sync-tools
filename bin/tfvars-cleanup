@@ -99,8 +99,8 @@ for dir in "${DIRS[@]}"; do
 
     tfvars_file="$dir/terraform.tfvars"
     backup_file="$dir/terraform.tfvars.bak"
-    backend_file="$dir/backend.tf"
-    backend_backup="$dir/backend.tf.bak"
+    backend_file="$dir/_backend.tf"
+    backend_backup="$dir/_backend.tf.bak"
 
     # Check for tfvars file
     if [[ -f "$tfvars_file" ]]; then

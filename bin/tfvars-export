@@ -1,9 +1,10 @@
 #!/bin/bash
-# tfvars-export - Export terraform.tfvars to Bitwarden/1Password
+# tfvars-export - Export terraform.tfvars and backend config to Bitwarden/1Password
 #
 # This script:
 # 1. Parses terraform.tfvars to extract variable values
-# 2. Creates or updates a vault item with the configuration
+# 2. Parses _backend.tf to extract OCI backend configuration (namespace)
+# 3. Creates or updates a vault item with the configuration
 #
 # Usage: tfvars-export [options] [terraform_dir]
 #
@@ -186,6 +187,42 @@ parse_tfvars() {
     done < "$file"
 }
 
+# Parse _backend.tf to extract OCI backend configuration
+parse_backend_tf() {
+    local file="$1"
+
+    if [[ ! -f "$file" ]]; then
+        log_verbose "Backend file not found: $file"
+        return 0
+    fi
+
+    log_verbose "Parsing backend: $file"
+
+    # Extract namespace from backend block
+    local namespace
+    namespace=$(grep -E '^\s*namespace\s*=' "$file" | sed -E 's/.*=\s*"([^"]+)".*/\1/' | head -1)
+    if [[ -n "$namespace" ]]; then
+        export CONFIG_OCI_NAMESPACE="$namespace"
+        log_verbose "Parsed backend: oci_namespace = $namespace"
+    fi
+
+    # Extract bucket (for reference)
+    local bucket
+    bucket=$(grep -E '^\s*bucket\s*=' "$file" | sed -E 's/.*=\s*"([^"]+)".*/\1/' | head -1)
+    if [[ -n "$bucket" ]]; then
+        export CONFIG_OCI_BUCKET="$bucket"
+        log_verbose "Parsed backend: oci_bucket = $bucket"
+    fi
+
+    # Extract config_file_profile
+    local profile
+    profile=$(grep -E '^\s*config_file_profile\s*=' "$file" | sed -E 's/.*=\s*"([^"]+)".*/\1/' | head -1)
+    if [[ -n "$profile" ]]; then
+        export CONFIG_OCI_PROFILE="$profile"
+        log_verbose "Parsed backend: oci_profile = $profile"
+    fi
+}
+
 # ============================================================================
 # PROVIDER SELECTION
 # ============================================================================
@@ -250,6 +287,13 @@ main() {
     # Parse tfvars
     log_step "Parsing $tfvars_file..."
     parse_tfvars "$tfvars_file"
+
+    # Parse backend file if exists
+    local backend_file="$TERRAFORM_DIR/_backend.tf"
+    if [[ -f "$backend_file" ]]; then
+        log_step "Parsing $backend_file..."
+        parse_backend_tf "$backend_file"
+    fi
 
     # Get domain from tfvars or argument
     if [[ -z "$DOMAIN" ]]; then

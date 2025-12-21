@@ -56,7 +56,7 @@ Examples:
 
 Generated files:
   terraform.tfvars  - Variable values from vault
-  backend.tf        - OCI backend configuration
+  _backend.tf       - OCI backend configuration
 
 Supported vault providers:
   - BitWarden (bw)
@@ -238,7 +238,7 @@ select_domain() {
 generate_backend_tf() {
     local domain="$1"
     local item_json="$2"
-    local backend_file="$TERRAFORM_DIR/backend.tf"
+    local backend_file="$TERRAFORM_DIR/_backend.tf"
 
     # Get namespace from vault
     local namespace
