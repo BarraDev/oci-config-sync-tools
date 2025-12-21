@@ -309,7 +309,7 @@ main() {
             --arg value "$value" \
             --argjson type "$field_type" \
             '. + [{name: $name, value: $value, type: $type}]')
-        ((field_count++))
+        field_count=$((field_count + 1))
     done < <(env | grep "^CONFIG_" | sort)
 
     log_info "Fields to export: $field_count"
