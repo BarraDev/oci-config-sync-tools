@@ -249,13 +249,24 @@ generate_backend_tf() {
         namespace=""
     fi
 
-    # Determine state key based on directory name
-    local dir_name
-    dir_name=$(basename "$TERRAFORM_DIR")
-    local state_key="${dir_name}/terraform.tfstate"
+    # Determine state key - preserve existing key if _backend.tf exists
+    local state_key=""
+    if [[ -f "$backend_file" ]]; then
+        state_key=$(grep -E '^\s*key\s*=' "$backend_file" | sed -E 's/.*key\s*=\s*"([^"]+)".*/\1/' | head -1)
+        if [[ -n "$state_key" ]]; then
+            log_verbose "Preserving existing state key: $state_key"
+        fi
+    fi
 
-    # Profile name based on domain: terraform-example.com
-    local profile="terraform-${domain}"
+    # Fallback to directory-based key if not found
+    if [[ -z "$state_key" ]]; then
+        local dir_name
+        dir_name=$(basename "$TERRAFORM_DIR")
+        state_key="${dir_name}/terraform.tfstate"
+    fi
+
+    # Profile name based on domain: terraform_example_com (underscores instead of dots/hyphens)
+    local profile="terraform_${domain//./_}"
 
     if $DRY_RUN; then
         log_dry_run "Generate $backend_file with:"
@@ -464,7 +475,7 @@ main() {
         log_info "Generated: $output_file"
         echo ""
         log_info "Next steps:"
-        echo "  1. Ensure OCI CLI profile 'terraform-${domain}' exists in ~/.oci/config"
+        echo "  1. Ensure OCI CLI profile 'terraform_${domain//./_}' exists in ~/.oci/config"
         echo "  2. Run: terraform init"
         echo "  3. Run: terraform plan"
     fi
