@@ -74,9 +74,9 @@ done
 
 # Find all terraform directories if --all
 if $CLEAN_ALL; then
-    while IFS= read -r -d '' dir; do
-        DIRS+=("$(dirname "$dir")")
-    done < <(find . -name "*.tf" -type f -print0 2>/dev/null | xargs -0 -I{} dirname {} | sort -u | while read d; do printf '%s\0' "$d"; done)
+    while IFS= read -r dir; do
+        [[ -n "$dir" ]] && DIRS+=("$dir")
+    done < <(find . -name "*.tf" -type f 2>/dev/null | xargs -I{} dirname {} | sort -u)
 fi
 
 # Default to current directory
