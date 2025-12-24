@@ -1,17 +1,17 @@
 #!/bin/bash
-# tfvars-export - Export terraform.tfvars and backend config to Bitwarden/1Password
+# oci-config-export - Export OCI Terraform configuration to vault
 #
 # This script:
 # 1. Parses terraform.tfvars to extract variable values
 # 2. Parses _backend.tf to extract OCI backend configuration (namespace)
 # 3. Creates or updates a vault item with the configuration
 #
-# Usage: tfvars-export [options] [terraform_dir]
+# Usage: oci-config-export [options] [terraform_dir]
 #
 # Examples:
-#   tfvars-export terraform/config     # Export config tfvars to vault
-#   tfvars-export terraform/infra      # Export infra tfvars to vault
-#   tfvars-export --domain example.com # Specify domain explicitly
+#   oci-config-export terraform/config     # Export config tfvars to vault
+#   oci-config-export terraform/infra      # Export infra tfvars to vault
+#   oci-config-export --domain example.com # Specify domain explicitly
 
 set -e
 
@@ -28,12 +28,12 @@ source "$LOADER_ROOT/lib/vault-providers/_interface.sh"
 
 show_help() {
     cat << EOF
-Usage: tfvars-export [options] [terraform_dir]
+Usage: oci-config-export [options] [terraform_dir]
 
-Export terraform.tfvars to vault provider (Bitwarden/1Password).
+Export OCI Terraform configuration to vault provider (Bitwarden/1Password).
 
-The script reads terraform.tfvars and creates or updates a vault item
-with the configuration values.
+The script reads terraform.tfvars and _backend.tf and creates or updates
+a vault item with the configuration values.
 
 Options:
   --domain DOMAIN   Domain for the vault item (e.g., example.com)
@@ -47,9 +47,9 @@ Arguments:
   terraform_dir     Path to Terraform directory (default: current directory)
 
 Examples:
-  tfvars-export terraform/config          # Export config to vault
-  tfvars-export terraform/infra           # Export infra to vault
-  tfvars-export --domain example.com .    # Use specific domain
+  oci-config-export terraform/config          # Export config to vault
+  oci-config-export terraform/infra           # Export infra to vault
+  oci-config-export --domain example.com .    # Use specific domain
 
 Supported vault providers:
   - BitWarden (bw)
@@ -271,7 +271,7 @@ select_provider() {
 main() {
     parse_args "$@"
 
-    log_info "tfvars-export - Export terraform.tfvars to vault"
+    log_info "oci-config-export - Export OCI Terraform configuration to vault"
     log_verbose "Terraform directory: $TERRAFORM_DIR"
 
     # Check requirements
