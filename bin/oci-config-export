@@ -124,6 +124,7 @@ parse_args() {
 
 # Parse terraform.tfvars and extract variable values
 # Sets CONFIG_* variables for each tfvar
+# Supports: simple values, heredocs, maps, lists, and nested structures
 parse_tfvars() {
     local file="$1"
 
@@ -134,17 +135,24 @@ parse_tfvars() {
 
     log_verbose "Parsing: $file"
 
-    # Use a more robust parser that handles multiline values
+    # State tracking
     local current_var=""
     local in_heredoc=false
     local heredoc_marker=""
     local heredoc_value=""
+    local in_complex=false
+    local complex_value=""
+    local brace_depth=0
+    local bracket_depth=0
 
     while IFS= read -r line || [[ -n "$line" ]]; do
-        # Skip comments and empty lines
-        [[ "$line" =~ ^[[:space:]]*# ]] && continue
-        [[ -z "${line// }" ]] && continue
+        # Skip comments (but not inside heredocs or complex types)
+        if ! $in_heredoc && ! $in_complex; then
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            [[ -z "${line// }" ]] && continue
+        fi
 
+        # Handle heredoc content
         if $in_heredoc; then
             if [[ "$line" == "$heredoc_marker" ]]; then
                 # End of heredoc
@@ -160,6 +168,33 @@ parse_tfvars() {
             continue
         fi
 
+        # Handle complex type content (maps, lists, objects)
+        if $in_complex; then
+            complex_value+="$line"$'\n'
+
+            # Count braces and brackets
+            local open_braces="${line//[^\{]/}"
+            local close_braces="${line//[^\}]/}"
+            local open_brackets="${line//[^\[]/}"
+            local close_brackets="${line//[^\]]/}"
+
+            brace_depth=$((brace_depth + ${#open_braces} - ${#close_braces}))
+            bracket_depth=$((bracket_depth + ${#open_brackets} - ${#close_brackets}))
+
+            # Check if complex type is complete
+            if [[ $brace_depth -eq 0 && $bracket_depth -eq 0 ]]; then
+                local var_upper
+                var_upper=$(echo "$current_var" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+                # Remove trailing newline and store
+                complex_value="${complex_value%$'\n'}"
+                export "CONFIG_$var_upper=$complex_value"
+                log_verbose "Parsed (complex): $current_var"
+                in_complex=false
+                complex_value=""
+            fi
+            continue
+        fi
+
         # Check for heredoc start
         if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*=[[:space:]]*\<\<-?([A-Z]+) ]]; then
             current_var="${BASH_REMATCH[1]}"
@@ -169,14 +204,48 @@ parse_tfvars() {
             continue
         fi
 
+        # Check for complex type start (map or list)
+        if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*=[[:space:]]*(\{|\[) ]]; then
+            current_var="${BASH_REMATCH[1]}"
+            local start_char="${BASH_REMATCH[2]}"
+
+            # Get the rest of the line after the variable name
+            local rest="${line#*=}"
+            rest="${rest#"${rest%%[![:space:]]*}"}"  # Trim leading whitespace
+
+            # Count initial depth
+            local open_braces="${rest//[^\{]/}"
+            local close_braces="${rest//[^\}]/}"
+            local open_brackets="${rest//[^\[]/}"
+            local close_brackets="${rest//[^\]]/}"
+
+            brace_depth=$((${#open_braces} - ${#close_braces}))
+            bracket_depth=$((${#open_brackets} - ${#close_brackets}))
+
+            # Check if it's a single-line complex type
+            if [[ $brace_depth -eq 0 && $bracket_depth -eq 0 ]]; then
+                local var_upper
+                var_upper=$(echo "$current_var" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+                export "CONFIG_$var_upper=$rest"
+                log_verbose "Parsed (inline complex): $current_var"
+            else
+                # Multi-line complex type
+                in_complex=true
+                complex_value="$rest"$'\n'
+            fi
+            continue
+        fi
+
         # Simple key = "value" or key = value
         if [[ "$line" =~ ^([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*=[[:space:]]*(.+) ]]; then
             local var_name="${BASH_REMATCH[1]}"
             local var_value="${BASH_REMATCH[2]}"
 
-            # Remove quotes if present
-            var_value="${var_value#\"}"
-            var_value="${var_value%\"}"
+            # Remove quotes if present (for simple string values)
+            if [[ "$var_value" =~ ^\".*\"$ ]]; then
+                var_value="${var_value#\"}"
+                var_value="${var_value%\"}"
+            fi
 
             # Convert to CONFIG_* format
             local var_upper

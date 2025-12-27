@@ -67,16 +67,27 @@ oci-config-export --update terraform/config
 
 ### Cleanup generated files
 
+**Safety**: By default, `oci-config-clean` verifies vault backup before deletion.
+
 ```bash
-# Remove generated tfvars and backend files (contain secrets)
+# Remove generated tfvars and backend files (with vault verification)
 oci-config-clean terraform/config
 
-# Preview what would be removed
+# Preview what would be removed (no vault verification needed)
 oci-config-clean --dry-run terraform/config
 
 # Clean all terraform directories in a project
 oci-config-clean --all
+
+# Skip vault verification (not recommended)
+oci-config-clean --force terraform/config
 ```
+
+**How it works**:
+- Verifies that critical variables are backed up in vault
+- Compares local values with vault to ensure backup is current
+- Only removes files if vault backup is verified
+- Use `--force` to bypass verification (e.g., if vault provider not installed)
 
 ## Generated Files
 
@@ -158,6 +169,45 @@ fingerprint=xx:xx:xx...
 tenancy=ocid1.tenancy...
 region=sa-saopaulo-1
 key_file=~/.oci/keys/terraform-example.com.pem
+```
+
+## Safety Features
+
+### Vault Backup Verification
+
+The `oci-config-clean` command includes safety verification to prevent accidental data loss:
+
+**Critical Variables Verified**:
+- `compartment_id` - OCI compartment ID
+- `vault_id` - Oracle Vault ID
+- `region` - OCI region
+- `domain` - Domain identifier
+
+**Verification Process**:
+1. Extracts domain from local `terraform.tfvars`
+2. Connects to vault provider (Bitwarden/1Password/LastPass)
+3. Retrieves vault item: "OCI Terraform - {domain}"
+4. Compares critical variable values between local and vault
+5. Only proceeds with deletion if all values match
+
+**Example Output**:
+```
+[STEP] Verifying vault backup for domain: example.com
+[INFO] ✓ Found vault item: OCI Terraform - example.com
+[STEP] Verifying critical variables...
+[INFO]   ✓ compartment_id: match
+[INFO]   ✓ vault_id: match
+[INFO]   ✓ region: match
+[INFO]   ✓ domain: match
+[INFO] ✓ All critical variables verified in vault
+[INFO] ✓ Safe to remove terraform.tfvars
+```
+
+**Bypass Verification**:
+
+Use `--force` when vault provider is not available:
+```bash
+oci-config-clean --force terraform/config
 ```
 
 ## Requirements
@@ -246,8 +296,9 @@ terraform init
 terraform plan
 terraform apply
 
-# 4. Cleanup secrets from disk
+# 4. Cleanup secrets from disk (automatically verifies vault backup)
 oci-config-clean terraform/config
+# Vault backup is verified before deletion - safe by default!
 
 # 5. After updating config - sync back to vault
 oci-config-export terraform/config
